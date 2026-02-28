@@ -1,5 +1,5 @@
-# Nand to Tetris — Projects 1–3
-> Boolean Logic · Boolean Arithmetic · Sequential Logic
+# Nand to Tetris — Projects 1–4
+> Boolean Logic · Boolean Arithmetic · Sequential Logic · Machine Language
 
 ---
 
@@ -10,6 +10,7 @@
 | 1 | Boolean Logic | Build 15 logic gates from only NAND |
 | 2 | Boolean Arithmetic | Build adders and the Hack ALU |
 | 3 | Sequential Logic | Build memory chips and the Program Counter |
+| 4 | Machine Language | Write Hack assembly programs directly |
 
 **The one rule:** Everything traces back to a single primitive — the NAND gate.
 
@@ -584,3 +585,335 @@ Register(in=w3, load=true, out=regOut, out=out);
 | RAM4K | 4K registers, 12-bit address |
 | RAM16K | 16K registers, 14-bit address |
 | PC | Program Counter: inc / load / reset |
+
+---
+
+## Project 4 — Machine Language
+
+### Overview
+
+Project 4 is the first time you write software instead of hardware. You program the Hack computer directly in its native assembly language, getting hands-on with the machine you've been building from the ground up.
+
+**Two programs to write:**
+| Program | File | Goal |
+|---------|------|------|
+| Mult | `Mult.asm` | Multiply R0 × R1, store result in R2 |
+| Fill | `Fill.asm` | Fill screen black on keypress, clear on release |
+
+---
+
+### The Hack Architecture
+
+The Hack computer has two separate memory spaces and two registers.
+
+#### Registers
+
+| Register | Description |
+|----------|-------------|
+| `D` | Data register — general-purpose 16-bit value storage |
+| `A` | Address register — doubles as a value register and memory pointer |
+| `M` | Not a real register; shorthand for `RAM[A]` (memory at address A) |
+
+#### Memory Map
+
+| Address Range | Name | Purpose |
+|---------------|------|---------|
+| 0–15 | Virtual registers | `R0`–`R15` (predefined symbols) |
+| 16–255 | Static variables | Compiler-allocated statics |
+| 256–2047 | Stack | Call stack |
+| 2048–16383 | Heap | Dynamic memory |
+| 16384–24575 | Screen | Memory-mapped display (256×512 pixels) |
+| 24576 | Keyboard | Memory-mapped keyboard input |
+
+**Predefined symbols:**
+
+| Symbol | Address |
+|--------|---------|
+| `R0`–`R15` | 0–15 |
+| `SP` | 0 |
+| `LCL` | 1 |
+| `ARG` | 2 |
+| `THIS` | 3 |
+| `THAT` | 4 |
+| `SCREEN` | 16384 |
+| `KBD` | 24576 |
+
+---
+
+### Instruction Set
+
+Hack has exactly two instruction types.
+
+#### A-Instruction — Load a value into A
+`@value`
+
+Sets the A register to a constant, a variable name, or a label address.
+
+```asm
+@42       // A = 42
+@R0       // A = 0  (predefined symbol)
+@SCREEN   // A = 16384
+@myVar    // A = address allocated to symbol "myVar"
+@LOOP     // A = address of label (LOOP)
+```
+
+**Encoding:** `0vvvvvvvvvvvvvvv` — bit 15 is 0, bits 14–0 hold the 15-bit value.
+
+---
+
+#### C-Instruction — Compute, store, and/or jump
+`dest = comp ; jump`
+
+All three parts are optional, but at least one of `dest` or `jump` must be present.
+
+```asm
+D=D+A       // compute D+A, store in D
+D=M         // load RAM[A] into D
+M=D         // store D into RAM[A]
+0;JMP       // unconditional jump
+D;JGT       // jump if D > 0
+AMD=D+1     // store D+1 into A, M, and D
+```
+
+**Encoding:** `111accccccdddjjj`
+
+| Field | Bits | Description |
+|-------|------|-------------|
+| `111` | 15–13 | C-instruction marker |
+| `a` | 12 | Use A (a=0) or M (a=1) in comp |
+| `cccccc` | 11–6 | ALU computation |
+| `ddd` | 5–3 | Destination (A, D, M) |
+| `jjj` | 2–0 | Jump condition |
+
+##### comp field (a=0 / a=1)
+
+| comp | a=0 | a=1 |
+|------|-----|-----|
+| `0`   | 101010 | — |
+| `1`   | 111111 | — |
+| `-1`  | 111010 | — |
+| `D`   | 001100 | — |
+| `A`   | 110000 | `M` |
+| `!D`  | 001101 | — |
+| `!A`  | 110001 | `!M` |
+| `-D`  | 001111 | — |
+| `-A`  | 110011 | `-M` |
+| `D+1` | 011111 | — |
+| `A+1` | 110111 | `M+1` |
+| `D-1` | 001110 | — |
+| `A-1` | 110010 | `M-1` |
+| `D+A` | 000010 | `D+M` |
+| `D-A` | 010011 | `D-M` |
+| `A-D` | 000111 | `M-D` |
+| `D&A` | 000000 | `D&M` |
+| `D\|A` | 010101 | `D\|M` |
+
+##### dest field
+
+| dest | bits | Stored in |
+|------|------|-----------|
+| null | 000  | (nowhere) |
+| M    | 001  | RAM[A] |
+| D    | 010  | D register |
+| MD   | 011  | RAM[A] and D |
+| A    | 100  | A register |
+| AM   | 101  | A and RAM[A] |
+| AD   | 110  | A and D |
+| AMD  | 111  | A, RAM[A], and D |
+
+##### jump field
+
+| jump | bits | Condition |
+|------|------|-----------|
+| null | 000  | No jump |
+| JGT  | 001  | out > 0 |
+| JEQ  | 010  | out = 0 |
+| JGE  | 011  | out ≥ 0 |
+| JLT  | 100  | out < 0 |
+| JNE  | 101  | out ≠ 0 |
+| JLE  | 110  | out ≤ 0 |
+| JMP  | 111  | Always |
+
+---
+
+### Symbols & Labels
+
+#### Label declarations
+```asm
+(LOOP)      // declares a label; not an instruction
+(END)
+```
+Labels map to the ROM address of the **next** instruction after the declaration.
+
+#### Variable symbols
+Any symbol used with `@` that isn't predefined or a label is automatically allocated a RAM address starting at 16.
+
+```asm
+@counter    // first use: allocates RAM[16], then A = 16
+@sum        // next new symbol: RAM[17]
+```
+
+---
+
+### Assembly Patterns
+
+#### if (condition) goto LABEL
+```asm
+// if D == 0 goto ZERO
+@ZERO
+D;JEQ
+```
+
+#### Unconditional goto
+```asm
+@LOOP
+0;JMP
+```
+
+#### while loop
+```asm
+(LOOP)
+  // ... loop body ...
+  @LOOP
+  0;JMP       // always jump back
+(END)
+```
+
+#### Read / write memory
+```asm
+// D = RAM[17]
+@17
+D=M
+
+// RAM[17] = D
+@17
+M=D
+```
+
+#### Read keyboard input
+```asm
+@KBD        // A = 24576
+D=M         // D = current key code (0 if no key pressed)
+```
+
+#### Write to screen (set one word = 16 pixels)
+```asm
+@SCREEN
+M=-1        // fill 16 pixels black (all bits = 1)
+
+@SCREEN
+M=0         // clear 16 pixels
+```
+
+---
+
+### Mult.asm — R2 = R0 × R1
+
+Multiplication via repeated addition (R0 added R1 times).
+
+```asm
+// R2 = R0 * R1
+// Uses: R0 (multiplicand), R1 (loop counter), R2 (accumulator)
+
+    @R2
+    M=0         // R2 = 0
+
+(LOOP)
+    @R1
+    D=M         // D = R1
+    @END
+    D;JEQ       // if R1 == 0, done
+
+    @R0
+    D=M         // D = R0
+    @R2
+    M=D+M       // R2 += R0
+
+    @R1
+    M=M-1       // R1--
+
+    @LOOP
+    0;JMP
+
+(END)
+    @END
+    0;JMP       // infinite loop to halt
+```
+
+> **Note:** Hack has no HALT instruction. Programs end by looping on themselves.
+
+---
+
+### Fill.asm — Screen I/O
+
+Reads the keyboard register each cycle. Fills the screen black if a key is pressed; clears it otherwise.
+
+```asm
+// Continuously poll keyboard; fill or clear screen
+
+(MAINLOOP)
+    @KBD
+    D=M             // D = key code
+
+    @FILL
+    D;JNE           // if key pressed, go fill
+
+    // else: clear screen
+    @color
+    M=0
+    @DRAW
+    0;JMP
+
+(FILL)
+    @color
+    M=-1            // -1 = 1111111111111111 (all black)
+
+(DRAW)
+    // Draw all 8192 words of the screen (256 rows × 32 words/row)
+    @SCREEN
+    D=A
+    @addr
+    M=D             // addr = SCREEN base
+
+    @8192
+    D=A
+    @n
+    M=D             // n = 8192
+
+(DRAWLOOP)
+    @n
+    D=M
+    @MAINLOOP
+    D;JEQ           // if n == 0, loop back to poll keyboard
+
+    @color
+    D=M
+    @addr
+    A=M
+    M=D             // RAM[addr] = color
+
+    @addr
+    M=M+1           // addr++
+
+    @n
+    M=M-1           // n--
+
+    @DRAWLOOP
+    0;JMP
+```
+
+> **Key insight:** The screen is 256 rows × 512 pixels. Each memory word covers 16 pixels, so the screen is 256 × 32 = **8192 words** starting at address 16384 (`SCREEN`).
+
+---
+
+### Project 4 — Key Concepts Summary
+
+| Concept | Detail |
+|---------|--------|
+| Two instruction types | A-instruction (`@`) and C-instruction (`dest=comp;jump`) |
+| No multiplication opcode | Must implement as repeated addition |
+| No halt instruction | End programs with an infinite loop |
+| Screen is memory-mapped | 8192 words at `SCREEN` (16384); each word = 16 pixels |
+| Keyboard is memory-mapped | Single word at `KBD` (24576); 0 = no key |
+| Variables auto-allocated | New symbols assigned RAM addresses from 16 upward |
+| Labels don't use memory | `(LABEL)` declarations consume no ROM space |
