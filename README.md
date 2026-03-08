@@ -1,5 +1,5 @@
-# Nand to Tetris — Projects 1–4
-> Boolean Logic · Boolean Arithmetic · Sequential Logic · Machine Language
+# Nand to Tetris — Projects 1–5
+> Boolean Logic · Boolean Arithmetic · Sequential Logic · Machine Language · Computer Architecture
 
 ---
 
@@ -11,6 +11,7 @@
 | 2 | Boolean Arithmetic | Build adders and the Hack ALU |
 | 3 | Sequential Logic | Build memory chips and the Program Counter |
 | 4 | Machine Language | Write Hack assembly programs directly |
+| 5 | Computer Architecture | Build the Memory, CPU, and full Hack computer |
 
 **The one rule:** Everything traces back to a single primitive — the NAND gate.
 
@@ -917,3 +918,305 @@ Reads the keyboard register each cycle. Fills the screen black if a key is press
 | Keyboard is memory-mapped | Single word at `KBD` (24576); 0 = no key |
 | Variables auto-allocated | New symbols assigned RAM addresses from 16 upward |
 | Labels don't use memory | `(LABEL)` declarations consume no ROM space |
+
+---
+
+## Project 5 — Computer Architecture
+
+### Overview
+
+Project 5 assembles everything built so far into a working computer. You wire the ALU, registers, RAM, ROM, and PC together into three chips: `Memory`, `CPU`, and `Computer`.
+
+**Three chips to build:**
+
+| Chip | Description |
+|------|-------------|
+| `Memory` | Unified data memory: RAM16K + Screen + Keyboard |
+| `CPU` | Executes one Hack instruction per clock cycle |
+| `Computer` | Top-level: ROM32K + CPU + Memory |
+
+---
+
+### The Hack Computer — Big Picture
+
+```
+          ┌─────────────────────────────────────────┐
+          │              Computer                   │
+          │                                         │
+          │  ┌────────┐   instruction   ┌─────────┐ │
+          │  │ ROM32K │ ─────────────►  │   CPU   │ │
+          │  │ (ROM)  │ ◄─────────────  │         │ │
+          │  └────────┘    pc (address) │         │ │
+          │                             │         │ │
+          │                  inM ──────►│         │ │
+          │               writeM ◄──────│         │ │
+          │               addressM◄─────│         │ │
+          │                 outM ◄──────│         │ │
+          │                             └─────────┘ │
+          │                                 │  ▲    │
+          │                         writeM  │  │inM │
+          │                                 ▼  │    │
+          │                          ┌──────────┐   │
+          │                          │  Memory  │   │
+          │                          │ RAM+Screen│  │
+          │                          │ +Keyboard │  │
+          │                          └──────────┘   │
+          └─────────────────────────────────────────┘
+```
+
+---
+
+### Memory Chip
+
+`in[16], load, address[15] → out[16]`
+
+The unified data address space. Routes reads and writes to the correct device based on the address.
+
+#### Address Space
+
+| Address Range | Device | Notes |
+|---------------|--------|-------|
+| 0–16383 | RAM16K | General-purpose data memory |
+| 16384–24575 | Screen | Memory-mapped; writes update display |
+| 24576 | Keyboard | Read-only; reflects current key code |
+
+> **Key rule:** Only one device is active per address. The address MSBs determine the target:
+> - `address[14] = 0` → RAM16K
+> - `address[14] = 1, address[13] = 0` → Screen
+> - `address = 110000000000000` → Keyboard
+
+#### Memory Implementation
+
+```hdl
+CHIP Memory {
+    IN  in[16], load, address[15];
+    OUT out[16];
+
+    PARTS:
+    // Decode address to route load signal
+    // address[14] = 0 → RAM; address[14] = 1 → Screen/KBD
+    DMux(in=load, sel=address[14], a=ramLoad, b=screenLoad);
+
+    RAM16K(in=in, load=ramLoad,    address=address[0..13], out=ramOut);
+    Screen(in=in, load=screenLoad, address=address[0..12], out=screenOut);
+    Keyboard(out=kbdOut);
+
+    // Select correct output based on address
+    Mux16(a=ramOut,    b=screenOut, sel=address[14], out=w1);
+    // address[14]=1 and address[13]=1 means keyboard
+    And(a=address[14], b=address[13], out=isKbd);
+    Mux16(a=w1, b=kbdOut, sel=isKbd, out=out);
+}
+```
+
+---
+
+### CPU Chip
+
+`inM[16], instruction[16], reset → outM[16], writeM, addressM[15], pc[15]`
+
+The CPU fetches one instruction per cycle, decodes it, executes it via the ALU, and updates registers and the PC.
+
+#### CPU Inputs & Outputs
+
+| Pin | Direction | Description |
+|-----|-----------|-------------|
+| `inM[16]` | in | Value read from RAM[A] (memory input) |
+| `instruction[16]` | in | Current instruction from ROM |
+| `reset` | in | If 1, restart program from address 0 |
+| `outM[16]` | out | Value to write to memory |
+| `writeM` | out | If 1, write `outM` to RAM[A] |
+| `addressM[15]` | out | Address in RAM to read/write |
+| `pc[15]` | out | Address of next instruction (feeds ROM) |
+
+#### Instruction Decoding
+
+The CPU must first determine whether the instruction is an A-instruction or a C-instruction.
+
+```
+instruction[15] = 0  →  A-instruction:  load value into A register
+instruction[15] = 1  →  C-instruction:  execute ALU op
+```
+
+**C-instruction bit fields (from instruction[16]):**
+
+| Bit(s) | Field | Role |
+|--------|-------|------|
+| 15 | opcode | 1 = C-instruction |
+| 12 | a-bit | ALU uses A (0) or M (1) |
+| 11–6 | cccccc | ALU control bits |
+| 5 | d1 | Destination: write to A |
+| 4 | d2 | Destination: write to D |
+| 3 | d3 | Destination: write to M |
+| 2–0 | j1 j2 j3 | Jump condition bits |
+
+#### CPU Internal Structure
+
+The CPU contains four main components wired together:
+
+1. **A register** — holds a value or an address
+2. **D register** — holds a data value
+3. **ALU** — computes the result
+4. **PC** — tracks the next instruction address
+
+```
+                      instruction
+                          │
+              ┌───────────┴────────────┐
+              │ A-instr?   C-instr?    │
+              ▼                        ▼
+         load A reg            decode c/d/j bits
+              │                        │
+    ┌─────────┘              ┌─────────┘
+    │                        │
+    ▼                        ▼
+┌───────┐   addressM    ┌─────────┐
+│   A   │ ─────────────►│  Memory │
+│  reg  │◄──────────────│  (inM)  │
+└───────┘    a-bit mux  └─────────┘
+    │   \                    │
+    │    \──────►  ALU ◄─────┘
+    │           (x=D, y=A or M)
+    │                │
+    ▼                ▼
+┌───────┐        outM / writeM
+│   D   │◄───────────┘
+│  reg  │
+└───────┘
+    │
+    ▼
+   PC ──────────────────────► pc (to ROM)
+```
+
+#### CPU Implementation
+
+```hdl
+CHIP CPU {
+    IN  inM[16], instruction[16], reset;
+    OUT outM[16], writeM, addressM[15], pc[15];
+
+    PARTS:
+    // Decode instruction type
+    // instruction[15]=0 → A-instr; instruction[15]=1 → C-instr
+    Not(in=instruction[15], out=aInstr);
+    And(a=instruction[15], b=instruction[5], out=cAndD1); // C-instr & dest A
+
+    // A register: loaded by A-instr, or by C-instr when dest includes A
+    Mux16(a=instruction, b=aluOut, sel=instruction[15], out=aIn);
+    Or(a=aInstr, b=cAndD1, out=loadA);
+    ARegister(in=aIn, load=loadA, out=aOut, out[0..14]=addressM);
+
+    // D register: loaded by C-instr when dest includes D
+    And(a=instruction[15], b=instruction[4], out=loadD);
+    DRegister(in=aluOut, load=loadD, out=dOut);
+
+    // ALU y-input: A register or Memory (controlled by a-bit = instruction[12])
+    Mux16(a=aOut, b=inM, sel=instruction[12], out=aluY);
+
+    // ALU: x=D, y=A or M, control bits from instruction[11..6]
+    ALU(x=dOut, y=aluY,
+        zx=instruction[11], nx=instruction[10],
+        zy=instruction[9],  ny=instruction[8],
+        f=instruction[7],   no=instruction[6],
+        out=aluOut, out=outM, zr=zr, ng=ng);
+
+    // writeM: C-instr and dest includes M (instruction[3])
+    And(a=instruction[15], b=instruction[3], out=writeM);
+
+    // Jump logic: evaluate condition against ALU status flags
+    And(a=instruction[2], b=ng,          out=jlt);  // j1: jump if ng
+    And(a=instruction[1], b=zr,          out=jeq);  // j2: jump if zr
+    Or(a=ng, b=zr,                       out=ngOrZr);
+    Not(in=ngOrZr,                       out=pos);
+    And(a=instruction[0], b=pos,         out=jgt);  // j3: jump if positive
+    Or(a=jlt,  b=jeq,                    out=j1);
+    Or(a=j1,   b=jgt,                    out=jumpCond);
+    And(a=instruction[15], b=jumpCond,   out=doJump); // only jump on C-instr
+
+    // PC: jump loads A into PC; otherwise increment
+    Not(in=doJump, out=incPC);
+    PC(in=aOut, load=doJump, inc=incPC, reset=reset, out[0..14]=pc);
+}
+```
+
+---
+
+### Computer Chip
+
+`reset → (runs program)`
+
+The top-level chip. Connects ROM32K (instruction memory), CPU, and Memory (data memory) into the complete Hack computer.
+
+```hdl
+CHIP Computer {
+    IN reset;
+
+    PARTS:
+    // ROM holds the program; addressed by CPU's pc output
+    ROM32K(address=pc, out=instruction);
+
+    // CPU executes instructions and drives memory
+    CPU(inM=memOut, instruction=instruction, reset=reset,
+        outM=outM, writeM=writeM, addressM=addressM, pc=pc);
+
+    // Memory holds data, screen buffer, and keyboard state
+    Memory(in=outM, load=writeM, address=addressM, out=memOut);
+}
+```
+
+> **Key insight:** `Computer` is just three chips and four wires. All the complexity lives in the components you built in projects 1–4.
+
+---
+
+### Fetch-Execute Cycle
+
+Each clock tick the Hack CPU completes one full instruction cycle:
+
+| Phase | What happens |
+|-------|-------------|
+| **Fetch** | ROM32K outputs `instruction[16]` at address `pc` |
+| **Decode** | CPU reads bit 15 to identify A vs C instruction; extracts comp/dest/jump fields |
+| **Execute** | ALU computes result; A, D, M registers updated as specified by dest bits |
+| **Advance PC** | If jump condition met, PC ← A; else PC ← PC + 1 |
+
+---
+
+### Control Flow Summary
+
+| Scenario | Result |
+|----------|--------|
+| A-instruction (`bit15=0`) | Load 15-bit value into A; PC++ |
+| C-instruction, no jump | ALU computes; write to dest; PC++ |
+| C-instruction, jump taken | ALU computes; write to dest; PC ← A |
+| `reset=1` | PC ← 0 (restart program regardless of instruction) |
+
+---
+
+### Project 5 — Full Chip List
+
+| Chip | Inputs | Outputs | Description |
+|------|--------|---------|-------------|
+| Memory | in[16], load, address[15] | out[16] | RAM16K + Screen + Keyboard unified |
+| CPU | inM[16], instruction[16], reset | outM[16], writeM, addressM[15], pc[15] | Fetch/decode/execute engine |
+| Computer | reset | — | Complete Hack computer (top-level) |
+
+---
+
+### How the Projects Connect
+
+```
+Project 1  →  Gates (Not, And, Or, Mux, DMux, ...)
+    ↓
+Project 2  →  ALU  (HalfAdder, FullAdder, Add16, ALU)
+    ↓
+Project 3  →  Memory chips  (Bit, Register, RAM*, PC)
+    ↓
+Project 4  →  Assembly programs  (Mult.asm, Fill.asm)
+    ↓
+Project 5  →  Computer  (Memory chip + CPU + Computer)
+                              ↑               ↑
+                     uses RAM16K,        uses ALU, Registers,
+                     Screen, Keyboard    PC from projects 2 & 3
+```
+
+Every wire in the CPU and Memory traces back to NAND gates from Project 1.
