@@ -1,34 +1,30 @@
-# Nand to Tetris — Projects 1–5
-> Boolean Logic · Boolean Arithmetic · Sequential Logic · Machine Language · Computer Architecture
+# Nand to Tetris — Projects 1–6
+> Boolean Logic · Boolean Arithmetic · Sequential Logic · Machine Language · Computer Architecture · Assembler
+
+My solutions and notes for the first half of the [Nand to Tetris](https://www.nand2tetris.org/) course — building a working computer from scratch, starting from a single NAND gate and ending with an assembler that generates binary machine code.
 
 ---
 
-## Overview
+## What I Built
 
-| Project | Title | Goal |
-|---------|-------|------|
-| 1 | Boolean Logic | Build 15 logic gates from only NAND |
-| 2 | Boolean Arithmetic | Build adders and the Hack ALU |
-| 3 | Sequential Logic | Build memory chips and the Program Counter |
-| 4 | Machine Language | Write Hack assembly programs directly |
-| 5 | Computer Architecture | Build the Memory, CPU, and full Hack computer |
+| Project | Title | What I did |
+|---------|-------|------------|
+| 1 | Boolean Logic | Built 15 logic gates from only NAND |
+| 2 | Boolean Arithmetic | Built adders and the Hack ALU |
+| 3 | Sequential Logic | Built memory chips and the Program Counter |
+| 4 | Machine Language | Wrote Hack assembly programs directly |
+| 5 | Computer Architecture | Wired together the Memory, CPU, and full Hack computer |
+| 6 | Assembler | Wrote an assembler to translate `.asm` files into binary `.hack` files |
 
-**The one rule:** Everything traces back to a single primitive — the NAND gate.
+**The one rule I had to follow:** everything traces back to a single primitive — the NAND gate.
 
-### HDL Syntax Basics
+---
 
-```hdl
-CHIP ChipName {
-    IN  in1, in2, bus[16];    // input pins
-    OUT out1, bus[16];        // output pins
+### HDL Syntax
 
-    PARTS:
-    SubChip(in=in1, out=wire1);
-    SubChip(in=wire1, out=out1);
-}
-```
+Throughout projects 1–5 I wrote chips in HDL (Hardware Description Language). The structure is: a chip name, input/output pin declarations, and a PARTS section where I wired sub-chips together using named internal wires.
 
-**Bus slicing:**
+**Bus slicing I used:**
 - `a[0]` — bit 0
 - `a[0..7]` — bits 0 through 7
 - `a[0..15]` — full 16-bit bus
@@ -38,15 +34,9 @@ CHIP ChipName {
 
 ## Project 1 — Boolean Logic
 
-### The NAND Gate (only built-in primitive)
+The goal was to build every gate I'd need later using only NAND. No other primitive is allowed.
 
-```hdl
-CHIP Nand {
-  IN  a, b;
-  OUT out;
-  BUILTIN Nand;
-}
-```
+### The NAND Gate (the only built-in)
 
 | a | b | out |
 |---|---|-----|
@@ -67,10 +57,7 @@ CHIP Nand {
 | 0  | 1   |
 | 1  | 0   |
 
-```hdl
-PARTS:
-Nand(a=in, b=in, out=out);
-```
+**How I built it:** Feed `in` into both inputs of a NAND. A NAND with identical inputs always inverts — that's NOT for free.
 
 ---
 
@@ -84,11 +71,7 @@ Nand(a=in, b=in, out=out);
 | 1 | 0 | 0   |
 | 1 | 1 | 1   |
 
-```hdl
-PARTS:
-Nand(a=a, b=b, out=nandOut);
-Not(in=nandOut, out=out);
-```
+**How I built it:** NAND(a, b) gives NOT-AND. Slap a NOT on the output and I've got AND.
 
 ---
 
@@ -102,12 +85,7 @@ Not(in=nandOut, out=out);
 | 1 | 0 | 1   |
 | 1 | 1 | 1   |
 
-```hdl
-PARTS:
-Not(in=a, out=notA);
-Not(in=b, out=notB);
-Nand(a=notA, b=notB, out=out);  // De Morgan: !((!a)&(!b)) = a|b
-```
+**How I built it:** De Morgan's law: `a OR b = NOT(NOT(a) AND NOT(b))`. Negate both inputs then NAND them — that's OR using only NAND.
 
 ---
 
@@ -121,13 +99,7 @@ Nand(a=notA, b=notB, out=out);  // De Morgan: !((!a)&(!b)) = a|b
 | 1 | 0 | 1   |
 | 1 | 1 | 0   |
 
-```hdl
-PARTS:
-Nand(a=a,  b=b,  out=n1);
-Nand(a=a,  b=n1, out=n2);
-Nand(a=n1, b=b,  out=n3);
-Nand(a=n2, b=n3, out=out);
-```
+**How I built it:** NAND(a, b) → n1. Then NAND(a, n1) → n2 and NAND(n1, b) → n3. Finally NAND(n2, n3) → out. XOR from four NANDs.
 
 ---
 
@@ -136,7 +108,7 @@ Nand(a=n2, b=n3, out=out);
 #### Mux — 2-way 1-bit selector
 `a, b, sel → out`
 
-> If sel=0 → out=a. If sel=1 → out=b.
+> sel=0 → passes a through. sel=1 → passes b through.
 
 | a | b | sel | out |
 |---|---|-----|-----|
@@ -145,21 +117,14 @@ Nand(a=n2, b=n3, out=out);
 | 0 | 1 | 1   | 1   |
 | 1 | 1 | 1   | 1   |
 
-```hdl
-PARTS:
-// out = (a AND !sel) OR (b AND sel)
-Not(in=sel,  out=nSel);
-And(a=a,    b=nSel, out=w1);
-And(a=b,    b=sel,  out=w2);
-Or(a=w1,   b=w2,   out=out);
-```
+**How I built it:** `out = (a AND NOT sel) OR (b AND sel)`. Two AND gates (one on each input with the appropriate sel polarity), then OR them together.
 
 ---
 
 #### DMux — 1-to-2 router
 `in, sel → a, b`
 
-> If sel=0 → {a=in, b=0}. If sel=1 → {a=0, b=in}.
+> sel=0 → routes in to a. sel=1 → routes in to b.
 
 | in | sel | a | b |
 |----|-----|---|---|
@@ -168,82 +133,35 @@ Or(a=w1,   b=w2,   out=out);
 | 0  | 1   | 0 | 0 |
 | 1  | 1   | 0 | 1 |
 
-```hdl
-PARTS:
-Not(in=sel, out=nSel);
-And(a=in,  b=nSel, out=a);
-And(a=in,  b=sel,  out=b);
-```
+**How I built it:** `a = in AND NOT(sel)`, `b = in AND sel`. Straightforward once I saw the Mux pattern.
 
 ---
 
 ### 16-bit & Multi-way Chips
 
 #### Not16 / And16 / Or16
-Same logic as 1-bit versions, applied independently to all 16 bits.
 
-```hdl
-// Not16 example
-PARTS:
-Not(in=in[0],  out=out[0]);
-Not(in=in[1],  out=out[1]);
-// ... repeat for bits 2–14
-Not(in=in[15], out=out[15]);
-```
-
----
+**How I built them:** Apply the 1-bit version in parallel across all 16 bit positions. Repetitive to write, but it clicked why busses matter.
 
 #### Mux16
-Selects between two 16-bit buses using a single sel bit.
 
-```hdl
-PARTS:
-Mux(a=a[0], b=b[0], sel=sel, out=out[0]);
-Mux(a=a[1], b=b[1], sel=sel, out=out[1]);
-// ... bits 2–15
-```
-
----
+**How I built it:** 16 independent 1-bit Muxes sharing a single sel line.
 
 #### Or8Way
-Output is 1 if ANY of the 8 input bits is 1.
 
-```hdl
-PARTS:
-Or(a=in[0], b=in[1], out=w1);
-Or(a=w1,   b=in[2], out=w2);
-Or(a=w2,   b=in[3], out=w3);
-// ... chain through in[7]
-Or(a=w6,   b=in[7], out=out);
-```
-
----
+**How I built it:** Chain 7 Or gates — Or(bit0, bit1), then Or(that, bit2), all the way to bit7. A reduction tree.
 
 #### Mux4Way16
-Selects 1 of 4 buses using 2-bit sel.
 
-```hdl
-PARTS:
-Mux16(a=a, b=b, sel=sel[0], out=w1);
-Mux16(a=c, b=d, sel=sel[0], out=w2);
-Mux16(a=w1, b=w2, sel=sel[1], out=out);
-```
-
----
+**How I built it:** Two Mux16s pick between the first pair (a/b) and second pair (c/d) using sel[0], then a third Mux16 picks between those results using sel[1].
 
 #### DMux4Way
-Routes input to 1 of 4 outputs using 2-bit sel.
 
-```hdl
-PARTS:
-DMux(in=in, sel=sel[1], a=w1, b=w2);
-DMux(in=w1, sel=sel[0], a=a,  b=b);
-DMux(in=w2, sel=sel[0], a=c,  b=d);
-```
+**How I built it:** A DMux on sel[1] splits the signal first. Then a DMux on each branch using sel[0] produces the four final outputs.
 
 ---
 
-### Project 1 — Full Chip List
+### Project 1 — Chips I Built
 
 | Chip | Signature | Description |
 |------|-----------|-------------|
@@ -267,20 +185,20 @@ DMux(in=w2, sel=sel[0], a=c,  b=d);
 
 ## Project 2 — Boolean Arithmetic
 
+Here I built the arithmetic layer — adders up to 16-bit, and the full Hack ALU.
+
 ### Two's Complement
 
-Hack uses 16-bit two's complement to represent −32768 to 32767.
+The Hack computer represents negative numbers in 16-bit two's complement, covering −32768 to 32767.
 
-**To negate a number:**
-1. Flip all bits (NOT)
-2. Add 1
+**To negate a number:** flip all bits, then add 1.
 
 ```
 Example: negate 3
   0000000000000011   (3)
   1111111111111100   (NOT)
 + 0000000000000001   (+1)
-= 1111111111111101   (-3) 
+= 1111111111111101   (-3)
 ```
 
 | Binary | Decimal |
@@ -297,7 +215,6 @@ Example: negate 3
 
 #### HalfAdder
 `a, b → sum, carry`
-Adds 2 single bits. No carry-in.
 
 | a | b | sum | carry |
 |---|---|-----|-------|
@@ -306,17 +223,12 @@ Adds 2 single bits. No carry-in.
 | 1 | 0 | 1   | 0     |
 | 1 | 1 | 0   | 1     |
 
-```hdl
-PARTS:
-Xor(a=a, b=b, out=sum);
-And(a=a, b=b, out=carry);
-```
+**How I built it:** Sum is XOR(a, b). Carry is AND(a, b). Carry only fires when both inputs are 1.
 
 ---
 
 #### FullAdder
 `a, b, c → sum, carry`
-Adds 3 bits (a + b + carry-in).
 
 | a | b | c | sum | carry |
 |---|---|---|-----|-------|
@@ -326,59 +238,41 @@ Adds 3 bits (a + b + carry-in).
 | 1 | 1 | 0 | 0   | 1     |
 | 1 | 1 | 1 | 1   | 1     |
 
-```hdl
-PARTS:
-HalfAdder(a=a,  b=b, sum=s1, carry=c1);
-HalfAdder(a=s1, b=c, sum=sum, carry=c2);
-Or(a=c1, b=c2, out=carry);
-```
+**How I built it:** Chain two HalfAdders. First takes a and b → intermediate sum s1 and carry c1. Second takes s1 and carry-in c → final sum and carry c2. Final carry = OR(c1, c2).
 
 ---
 
 #### Add16
 `a[16], b[16] → out[16]`
-Adds two 16-bit numbers. Overflow is ignored.
 
-```hdl
-PARTS:
-HalfAdder(a=a[0], b=b[0], sum=out[0], carry=c0);
-FullAdder(a=a[1], b=b[1], c=c0, sum=out[1], carry=c1);
-FullAdder(a=a[2], b=b[2], c=c1, sum=out[2], carry=c2);
-// ... carry ripples through bits 3–14
-FullAdder(a=a[15], b=b[15], c=c14, sum=out[15], carry=);
-```
+**How I built it:** HalfAdder for bit 0 (no carry-in), then FullAdders for bits 1–15 in a ripple chain. Carry-out from bit 15 is discarded — overflow is ignored by design.
 
 ---
 
 #### Inc16
 `in[16] → out[16]`
-Adds 1 to a 16-bit number. Used in the Program Counter.
 
-```hdl
-PARTS:
-Add16(a=in, b=false, out=out);
-// Trick: wire b[0]=true, b[1..15]=false
-```
+**How I built it:** Add16 with the second input hardwired to 1 (bit 0 = true, all others = false).
 
 ---
 
 ### The Hack ALU
 
-The ALU takes two 16-bit inputs (x, y) and 6 control bits, and produces a 16-bit output plus two status flags.
+This was the most satisfying chip to build. Six control bits let it compute 18 different functions.
 
 **Inputs:** `x[16]`, `y[16]`, `zx`, `nx`, `zy`, `ny`, `f`, `no`  
 **Outputs:** `out[16]`, `zr` (out==0), `ng` (out<0)
 
 #### Control Bits
 
-| Bit | Meaning | Effect |
-|-----|---------|--------|
-| zx | zero x | if zx=1, set x=0 |
-| nx | negate x | if nx=1, set x=!x |
-| zy | zero y | if zy=1, set y=0 |
-| ny | negate y | if ny=1, set y=!y |
-| f | function | if f=1: x+y; if f=0: x&y |
-| no | negate output | if no=1, set out=!out |
+| Bit | Effect |
+|-----|--------|
+| zx | if 1, force x = 0 |
+| nx | if 1, negate x |
+| zy | if 1, force y = 0 |
+| ny | if 1, negate y |
+| f  | if 1: compute x+y; if 0: compute x AND y |
+| no | if 1, negate the output |
 
 #### ALU Function Table
 
@@ -403,44 +297,27 @@ The ALU takes two 16-bit inputs (x, y) and 6 control bits, and produces a 16-bit
 | 0  | 0  | 0  | 0  | 0 | 0  | x&y |
 | 0  | 1  | 0  | 1  | 0 | 1  | x\|y |
 
-#### ALU Implementation
+#### How I built the ALU
 
-```hdl
-PARTS:
-// Step 1: handle zx/nx on x
-Mux16(a=x,    b=false,   sel=zx, out=x1);
-Not16(in=x1,  out=notX1);
-Mux16(a=x1,   b=notX1,   sel=nx, out=x2);
-
-// Step 2: handle zy/ny on y
-Mux16(a=y,    b=false,   sel=zy, out=y1);
-Not16(in=y1,  out=notY1);
-Mux16(a=y1,   b=notY1,   sel=ny, out=y2);
-
-// Step 3: f selects add or and
-Add16(a=x2,   b=y2,      out=added);
-And16(a=x2,   b=y2,      out=anded);
-Mux16(a=anded, b=added,  sel=f,  out=fOut);
-
-// Step 4: no negates output
-Not16(in=fOut,  out=notFOut);
-Mux16(a=fOut,   b=notFOut, sel=no, out=out, ...);
-
-// Step 5: compute zr (out==0) and ng (out[15]==1)
-```
+1. **Pre-process x:** If zx=1, zero it out. If nx=1, bitwise-negate it.
+2. **Pre-process y:** Same — zero if zy=1, negate if ny=1.
+3. **Compute:** If f=1, add x and y. If f=0, AND them.
+4. **Post-process:** If no=1, negate the result.
+5. **Status flags:** `zr` = OR all 16 output bits together, then NOT (1 if output is zero). `ng` = output bit 15 directly (1 if negative).
 
 ---
 
 ## Project 3 — Sequential Logic
 
+Up to this point everything was combinational — no memory, no time. Project 3 introduced the clock and state.
+
 ### The DFF — D Flip-Flop (built-in primitive)
 
 ```
 out(t) = in(t-1)
-// Output at time t equals input from the previous clock tick
 ```
 
-This is the **only** place where time exists in the hardware. All memory chips are built on top of DFF.
+The DFF is the only chip that "remembers" — its output at time t is whatever its input was at t-1. Every memory chip I built in this project ultimately sits on top of DFFs.
 
 | time | in | out |
 |------|----|-----|
@@ -457,128 +334,76 @@ This is the **only** place where time exists in the hardware. All memory chips a
 #### Bit — 1-bit register
 `in, load → out`
 
-> If load=1: stores `in` on next tick. If load=0: holds current value.
+> load=1: stores the input on the next tick. load=0: holds the current value.
 
 | in | load | out(t+1) |
 |----|------|----------|
 | -  | 0    | no change |
-| d  | 1    | d (loaded) |
+| d  | 1    | d |
 
-```hdl
-PARTS:
-// Mux decides: keep old value or load new
-Mux(a=dffOut, b=in, sel=load, out=muxOut);
-DFF(in=muxOut, out=dffOut, out=out);
-```
+**How I built it:** A Mux selects between the DFF's current output (feedback, load=0) and the new input (load=1). The Mux output feeds into the DFF. The DFF output loops back to the Mux and also becomes the chip output.
 
 ---
 
 #### Register — 16-bit
 `in[16], load → out[16]`
 
-16 Bit chips in parallel. Same load signal shared across all bits.
-
-```hdl
-PARTS:
-Bit(in=in[0],  load=load, out=out[0]);
-Bit(in=in[1],  load=load, out=out[1]);
-// ... repeat for bits 2–14
-Bit(in=in[15], load=load, out=out[15]);
-```
+**How I built it:** 16 Bit chips in parallel, all sharing the same load signal.
 
 ---
 
 ### RAM Chips
 
-Each level uses 8 of the previous size, a DMux8Way to route the load signal, and a Mux8Way16 to select the output.
+Each level is 8 instances of the previous, plus a DMux8Way to route the load signal and a Mux8Way16 to read back the right word.
 
 ```
 Register  ×8 →  RAM8  ×8 →  RAM64  ×8 →  RAM512  ×8 →  RAM4K  ×4 →  RAM16K
 (1 word)       (8w)        (64w)          (512w)         (4Kw)         (16Kw)
 ```
 
-| Chip | Address bits | Description |
-|------|-------------|-------------|
+| Chip | Address bits | Size |
+|------|-------------|------|
 | RAM8 | 3 | 8 × Register |
 | RAM64 | 6 | 8 × RAM8 |
 | RAM512 | 9 | 8 × RAM64 |
 | RAM4K | 12 | 8 × RAM512 |
-| RAM16K | 14 | 4 × RAM4K (used in CPU) |
+| RAM16K | 14 | 4 × RAM4K |
 
-#### RAM8 — template for all RAM chips
+#### How I built RAM8
 
-```hdl
-PARTS:
-// Route load to correct register
-DMux8Way(in=load, sel=address,
-         a=l0, b=l1, c=l2, d=l3,
-         e=l4, f=l5, g=l6, h=l7);
+1. DMux8Way routes the load signal to exactly one of 8 registers using the 3-bit address as selector.
+2. All 8 Registers receive the same input bus; only the one with an active load will actually store anything.
+3. Mux8Way16 selects the output of the addressed register using the same 3-bit address.
 
-// 8 registers, all receive in
-Register(in=in, load=l0, out=r0);
-Register(in=in, load=l1, out=r1);
-// ... r2 through r7
-Register(in=in, load=l7, out=r7);
+#### Address Slicing (RAM64 and up)
 
-// Select correct output
-Mux8Way16(a=r0, b=r1, c=r2, d=r3,
-          e=r4, f=r5, g=r6, h=r7,
-          sel=address, out=out);
-```
-
-#### RAM64 — address slicing pattern
-
-```hdl
-// 6-bit address: top 3 bits = which RAM8, bottom 3 = which register inside
-PARTS:
-DMux8Way(in=load, sel=address[3..5], a=l0, ... h=l7);
-
-RAM8(in=in, load=l0, address=address[0..2], out=r0);
-RAM8(in=in, load=l1, address=address[0..2], out=r1);
-// ... r2 through r7
-
-Mux8Way16(a=r0, ..., h=r7, sel=address[3..5], out=out);
-```
-
-> **Key insight:** Each RAM level splits the address in two — top bits select the sub-chip, bottom bits go inside it. This pattern repeats all the way to RAM16K.
+The same pattern repeats at every level: split the address in two. Upper bits select which sub-chip to activate; lower bits are passed down into that sub-chip as its own address. I found this recursive structure elegant once it clicked.
 
 ---
 
 ### Program Counter (PC)
-
 `in[16], load, inc, reset → out[16]`
 
-Tracks the current instruction address. Three control inputs determine behaviour each clock tick.
+| Control | Effect |
+|---------|--------|
+| inc=1 | Advance to next instruction |
+| load=1 | Jump to address in `in` |
+| reset=1 | Restart from address 0 |
 
-| Control | Effect | Use case |
-|---------|--------|----------|
-| inc=1 | out(t+1) = out(t) + 1 | Advance to next instruction |
-| load=1 | out(t+1) = in | Jump to address in `in` |
-| reset=1 | out(t+1) = 0 | Restart from beginning |
+**Priority:** reset beats load beats inc.
 
-**Priority:** reset > load > inc
-
-```hdl
-PARTS:
-// Increment current value
-Inc16(in=regOut, out=incOut);
-
-// Priority mux chain
-Mux16(a=regOut, b=incOut,  sel=inc,   out=w1);
-Mux16(a=w1,     b=in,      sel=load,  out=w2);
-Mux16(a=w2,     b=false,   sel=reset, out=w3);
-
-// Store result
-Register(in=w3, load=true, out=regOut, out=out);
-```
+**How I built it:**
+1. Compute the incremented value with Inc16 on the register's current output.
+2. Build a priority mux chain — start with the current value, layer in the incremented value (inc), then override with `in` (load), then override with 0 (reset). Later muxes win.
+3. Feed the result into a Register with load permanently tied to true.
 
 ---
 
-### Project 3 — Full Chip List
+### Project 3 — Chips I Built
 
 | Chip | Description |
 |------|-------------|
-| Bit | 1-bit register using DFF + Mux |
+| Bit | 1-bit register (DFF + Mux) |
 | Register | 16-bit register (16 × Bit) |
 | RAM8 | 8 registers, 3-bit address |
 | RAM64 | 64 registers, 6-bit address |
@@ -591,11 +416,10 @@ Register(in=w3, load=true, out=regOut, out=out);
 
 ## Project 4 — Machine Language
 
-### Overview
+First project where I wrote software rather than hardware. I programmed the Hack computer directly in assembly — a good reality check on how low-level the machine actually is.
 
-Project 4 is the first time you write software instead of hardware. You program the Hack computer directly in its native assembly language, getting hands-on with the machine you've been building from the ground up.
+**Two programs I wrote:**
 
-**Two programs to write:**
 | Program | File | Goal |
 |---------|------|------|
 | Mult | `Mult.asm` | Multiply R0 × R1, store result in R2 |
@@ -605,25 +429,23 @@ Project 4 is the first time you write software instead of hardware. You program 
 
 ### The Hack Architecture
 
-The Hack computer has two separate memory spaces and two registers.
-
 #### Registers
 
 | Register | Description |
 |----------|-------------|
-| `D` | Data register — general-purpose 16-bit value storage |
-| `A` | Address register — doubles as a value register and memory pointer |
-| `M` | Not a real register; shorthand for `RAM[A]` (memory at address A) |
+| `D` | Data register — general-purpose 16-bit value |
+| `A` | Address register — value store and memory pointer |
+| `M` | Alias for `RAM[A]` — not a physical register |
 
 #### Memory Map
 
 | Address Range | Name | Purpose |
 |---------------|------|---------|
-| 0–15 | Virtual registers | `R0`–`R15` (predefined symbols) |
-| 16–255 | Static variables | Compiler-allocated statics |
+| 0–15 | Virtual registers | `R0`–`R15` |
+| 16–255 | Static variables | Compiler-allocated |
 | 256–2047 | Stack | Call stack |
 | 2048–16383 | Heap | Dynamic memory |
-| 16384–24575 | Screen | Memory-mapped display (256×512 pixels) |
+| 16384–24575 | Screen | Memory-mapped display (256×512 px) |
 | 24576 | Keyboard | Memory-mapped keyboard input |
 
 **Predefined symbols:**
@@ -643,50 +465,29 @@ The Hack computer has two separate memory spaces and two registers.
 
 ### Instruction Set
 
-Hack has exactly two instruction types.
+Two instruction types, nothing else.
 
-#### A-Instruction — Load a value into A
-`@value`
+#### A-Instruction — `@value`
 
-Sets the A register to a constant, a variable name, or a label address.
+Loads a constant, variable address, or label address into A.
 
-```asm
-@42       // A = 42
-@R0       // A = 0  (predefined symbol)
-@SCREEN   // A = 16384
-@myVar    // A = address allocated to symbol "myVar"
-@LOOP     // A = address of label (LOOP)
-```
-
-**Encoding:** `0vvvvvvvvvvvvvvv` — bit 15 is 0, bits 14–0 hold the 15-bit value.
+**Encoding:** `0vvvvvvvvvvvvvvv` — bit 15 = 0, bits 14–0 = the 15-bit value.
 
 ---
 
-#### C-Instruction — Compute, store, and/or jump
-`dest = comp ; jump`
-
-All three parts are optional, but at least one of `dest` or `jump` must be present.
-
-```asm
-D=D+A       // compute D+A, store in D
-D=M         // load RAM[A] into D
-M=D         // store D into RAM[A]
-0;JMP       // unconditional jump
-D;JGT       // jump if D > 0
-AMD=D+1     // store D+1 into A, M, and D
-```
+#### C-Instruction — `dest = comp ; jump`
 
 **Encoding:** `111accccccdddjjj`
 
 | Field | Bits | Description |
 |-------|------|-------------|
 | `111` | 15–13 | C-instruction marker |
-| `a` | 12 | Use A (a=0) or M (a=1) in comp |
-| `cccccc` | 11–6 | ALU computation |
-| `ddd` | 5–3 | Destination (A, D, M) |
+| `a` | 12 | Use A (0) or M (1) in comp |
+| `cccccc` | 11–6 | ALU op |
+| `ddd` | 5–3 | Destination |
 | `jjj` | 2–0 | Jump condition |
 
-##### comp field (a=0 / a=1)
+##### comp field
 
 | comp | a=0 | a=1 |
 |------|-----|-----|
@@ -739,201 +540,82 @@ AMD=D+1     // store D+1 into A, M, and D
 
 ### Symbols & Labels
 
-#### Label declarations
-```asm
-(LOOP)      // declares a label; not an instruction
-(END)
-```
-Labels map to the ROM address of the **next** instruction after the declaration.
+`(LOOP)` declares a label pointing to the ROM address of the next instruction — no ROM space consumed.
 
-#### Variable symbols
-Any symbol used with `@` that isn't predefined or a label is automatically allocated a RAM address starting at 16.
-
-```asm
-@counter    // first use: allocates RAM[16], then A = 16
-@sum        // next new symbol: RAM[17]
-```
+Any `@symbol` that isn't predefined or a label gets automatically allocated a RAM address starting at 16, one per new symbol.
 
 ---
 
-### Assembly Patterns
+### Assembly Patterns I Used
 
-#### if (condition) goto LABEL
-```asm
-// if D == 0 goto ZERO
-@ZERO
-D;JEQ
-```
+**Conditional branch:** Load the target label into A, then `D;JEQ` (or whichever condition).
 
-#### Unconditional goto
-```asm
-@LOOP
-0;JMP
-```
+**Unconditional jump:** Load the target into A, then `0;JMP`.
 
-#### while loop
-```asm
-(LOOP)
-  // ... loop body ...
-  @LOOP
-  0;JMP       // always jump back
-(END)
-```
+**While loop:** Put the label before the body, unconditionally jump back at the end.
 
-#### Read / write memory
-```asm
-// D = RAM[17]
-@17
-D=M
+**Memory read/write:** Load the address into A, then `D=M` to read or `M=D` to write.
 
-// RAM[17] = D
-@17
-M=D
-```
+**Keyboard poll:** Load `KBD` into A, read M — 0 means no key is pressed.
 
-#### Read keyboard input
-```asm
-@KBD        // A = 24576
-D=M         // D = current key code (0 if no key pressed)
-```
-
-#### Write to screen (set one word = 16 pixels)
-```asm
-@SCREEN
-M=-1        // fill 16 pixels black (all bits = 1)
-
-@SCREEN
-M=0         // clear 16 pixels
-```
+**Screen write:** Load a screen address into A, write `M=-1` for black or `M=0` to clear.
 
 ---
 
-### Mult.asm — R2 = R0 × R1
+### Mult.asm — My Approach
 
-Multiplication via repeated addition (R0 added R1 times).
+**Goal:** R2 = R0 × R1, using only the available instructions.
 
-```asm
-// R2 = R0 * R1
-// Uses: R0 (multiplicand), R1 (loop counter), R2 (accumulator)
+Since there's no multiply opcode I implemented it as repeated addition:
 
-    @R2
-    M=0         // R2 = 0
-
-(LOOP)
-    @R1
-    D=M         // D = R1
-    @END
-    D;JEQ       // if R1 == 0, done
-
-    @R0
-    D=M         // D = R0
-    @R2
-    M=D+M       // R2 += R0
-
-    @R1
-    M=M-1       // R1--
-
-    @LOOP
-    0;JMP
-
-(END)
-    @END
-    0;JMP       // infinite loop to halt
-```
-
-> **Note:** Hack has no HALT instruction. Programs end by looping on themselves.
+1. Initialise R2 = 0.
+2. If R1 = 0, jump to END.
+3. R2 += R0.
+4. R1 -= 1.
+5. Go to step 2.
+6. END: infinite loop (Hack has no halt instruction).
 
 ---
 
-### Fill.asm — Screen I/O
+### Fill.asm — My Approach
 
-Reads the keyboard register each cycle. Fills the screen black if a key is pressed; clears it otherwise.
+**Goal:** Poll the keyboard in a loop; fill the screen black when a key is held, clear it when released.
 
-```asm
-// Continuously poll keyboard; fill or clear screen
+1. Read the keyboard register (24576) into D.
+2. Set a `color` variable to −1 if a key is pressed, 0 if not.
+3. Set an address pointer to the screen base (16384), counter to 8192.
+4. Loop: write `color` to the current address, advance the pointer, decrement the counter.
+5. When counter hits 0, go back to step 1.
 
-(MAINLOOP)
-    @KBD
-    D=M             // D = key code
-
-    @FILL
-    D;JNE           // if key pressed, go fill
-
-    // else: clear screen
-    @color
-    M=0
-    @DRAW
-    0;JMP
-
-(FILL)
-    @color
-    M=-1            // -1 = 1111111111111111 (all black)
-
-(DRAW)
-    // Draw all 8192 words of the screen (256 rows × 32 words/row)
-    @SCREEN
-    D=A
-    @addr
-    M=D             // addr = SCREEN base
-
-    @8192
-    D=A
-    @n
-    M=D             // n = 8192
-
-(DRAWLOOP)
-    @n
-    D=M
-    @MAINLOOP
-    D;JEQ           // if n == 0, loop back to poll keyboard
-
-    @color
-    D=M
-    @addr
-    A=M
-    M=D             // RAM[addr] = color
-
-    @addr
-    M=M+1           // addr++
-
-    @n
-    M=M-1           // n--
-
-    @DRAWLOOP
-    0;JMP
-```
-
-> **Key insight:** The screen is 256 rows × 512 pixels. Each memory word covers 16 pixels, so the screen is 256 × 32 = **8192 words** starting at address 16384 (`SCREEN`).
+> The screen is 256 rows × 512 pixels. Each memory word maps to 16 pixels, so the whole display is 256 × 32 = **8192 words**.
 
 ---
 
-### Project 4 — Key Concepts Summary
+### Project 4 — Key Takeaways
 
 | Concept | Detail |
 |---------|--------|
 | Two instruction types | A-instruction (`@`) and C-instruction (`dest=comp;jump`) |
-| No multiplication opcode | Must implement as repeated addition |
-| No halt instruction | End programs with an infinite loop |
-| Screen is memory-mapped | 8192 words at `SCREEN` (16384); each word = 16 pixels |
+| No multiply opcode | Implemented as repeated addition |
+| No halt | Programs end by looping forever |
+| Screen is memory-mapped | 8192 words at `SCREEN` (16384) |
 | Keyboard is memory-mapped | Single word at `KBD` (24576); 0 = no key |
-| Variables auto-allocated | New symbols assigned RAM addresses from 16 upward |
-| Labels don't use memory | `(LABEL)` declarations consume no ROM space |
+| Variables auto-allocated | From RAM[16] upward |
+| Labels are free | `(LABEL)` takes no ROM space |
 
 ---
 
 ## Project 5 — Computer Architecture
 
-### Overview
+This was the payoff project — wiring everything I'd built into a complete, working computer.
 
-Project 5 assembles everything built so far into a working computer. You wire the ALU, registers, RAM, ROM, and PC together into three chips: `Memory`, `CPU`, and `Computer`.
-
-**Three chips to build:**
+**Three chips I built:**
 
 | Chip | Description |
 |------|-------------|
 | `Memory` | Unified data memory: RAM16K + Screen + Keyboard |
 | `CPU` | Executes one Hack instruction per clock cycle |
-| `Computer` | Top-level: ROM32K + CPU + Memory |
+| `Computer` | Top-level chip: ROM32K + CPU + Memory |
 
 ---
 
@@ -970,44 +652,22 @@ Project 5 assembles everything built so far into a working computer. You wire th
 
 `in[16], load, address[15] → out[16]`
 
-The unified data address space. Routes reads and writes to the correct device based on the address.
-
 #### Address Space
 
 | Address Range | Device | Notes |
 |---------------|--------|-------|
-| 0–16383 | RAM16K | General-purpose data memory |
-| 16384–24575 | Screen | Memory-mapped; writes update display |
-| 24576 | Keyboard | Read-only; reflects current key code |
+| 0–16383 | RAM16K | General-purpose data |
+| 16384–24575 | Screen | Memory-mapped display |
+| 24576 | Keyboard | Read-only |
 
-> **Key rule:** Only one device is active per address. The address MSBs determine the target:
-> - `address[14] = 0` → RAM16K
-> - `address[14] = 1, address[13] = 0` → Screen
-> - `address = 110000000000000` → Keyboard
+> address[14]=0 → RAM · address[14]=1, address[13]=0 → Screen · address[14]=1, address[13]=1 → Keyboard
 
-#### Memory Implementation
+#### How I built it
 
-```hdl
-CHIP Memory {
-    IN  in[16], load, address[15];
-    OUT out[16];
-
-    PARTS:
-    // Decode address to route load signal
-    // address[14] = 0 → RAM; address[14] = 1 → Screen/KBD
-    DMux(in=load, sel=address[14], a=ramLoad, b=screenLoad);
-
-    RAM16K(in=in, load=ramLoad,    address=address[0..13], out=ramOut);
-    Screen(in=in, load=screenLoad, address=address[0..12], out=screenOut);
-    Keyboard(out=kbdOut);
-
-    // Select correct output based on address
-    Mux16(a=ramOut,    b=screenOut, sel=address[14], out=w1);
-    // address[14]=1 and address[13]=1 means keyboard
-    And(a=address[14], b=address[13], out=isKbd);
-    Mux16(a=w1, b=kbdOut, sel=isKbd, out=out);
-}
-```
+1. DMux on `address[14]` routes the load signal — RAM if bit 14 is 0, Screen if 1. Keyboard never gets a load (read-only).
+2. Instantiate RAM16K, Screen, and Keyboard with appropriate address slices.
+3. Mux16 on `address[14]` picks between RAM and Screen output.
+4. AND(address[14], address[13]) detects the keyboard; a second Mux16 overrides with keyboard output when true.
 
 ---
 
@@ -1015,194 +675,296 @@ CHIP Memory {
 
 `inM[16], instruction[16], reset → outM[16], writeM, addressM[15], pc[15]`
 
-The CPU fetches one instruction per cycle, decodes it, executes it via the ALU, and updates registers and the PC.
-
-#### CPU Inputs & Outputs
+#### Pins
 
 | Pin | Direction | Description |
 |-----|-----------|-------------|
-| `inM[16]` | in | Value read from RAM[A] (memory input) |
+| `inM[16]` | in | Value from RAM[A] |
 | `instruction[16]` | in | Current instruction from ROM |
-| `reset` | in | If 1, restart program from address 0 |
+| `reset` | in | Restart from address 0 if 1 |
 | `outM[16]` | out | Value to write to memory |
-| `writeM` | out | If 1, write `outM` to RAM[A] |
-| `addressM[15]` | out | Address in RAM to read/write |
-| `pc[15]` | out | Address of next instruction (feeds ROM) |
+| `writeM` | out | High when a memory write should happen |
+| `addressM[15]` | out | RAM address to read/write |
+| `pc[15]` | out | Next instruction address (feeds ROM) |
 
 #### Instruction Decoding
 
-The CPU must first determine whether the instruction is an A-instruction or a C-instruction.
-
 ```
-instruction[15] = 0  →  A-instruction:  load value into A register
-instruction[15] = 1  →  C-instruction:  execute ALU op
+instruction[15] = 0  →  A-instruction
+instruction[15] = 1  →  C-instruction
 ```
 
-**C-instruction bit fields (from instruction[16]):**
+**C-instruction bit fields:**
 
 | Bit(s) | Field | Role |
 |--------|-------|------|
 | 15 | opcode | 1 = C-instruction |
-| 12 | a-bit | ALU uses A (0) or M (1) |
-| 11–6 | cccccc | ALU control bits |
-| 5 | d1 | Destination: write to A |
-| 4 | d2 | Destination: write to D |
-| 3 | d3 | Destination: write to M |
-| 2–0 | j1 j2 j3 | Jump condition bits |
+| 12 | a-bit | Use A (0) or M (1) |
+| 11–6 | cccccc | ALU control |
+| 5 | d1 | Write result to A |
+| 4 | d2 | Write result to D |
+| 3 | d3 | Write result to M |
+| 2–0 | j1 j2 j3 | Jump condition |
 
-#### CPU Internal Structure
+#### How I built the CPU
 
-The CPU contains four main components wired together:
-
-1. **A register** — holds a value or an address
-2. **D register** — holds a data value
-3. **ALU** — computes the result
-4. **PC** — tracks the next instruction address
-
-```
-                      instruction
-                          │
-              ┌───────────┴────────────┐
-              │ A-instr?   C-instr?    │
-              ▼                        ▼
-         load A reg            decode c/d/j bits
-              │                        │
-    ┌─────────┘              ┌─────────┘
-    │                        │
-    ▼                        ▼
-┌───────┐   addressM    ┌─────────┐
-│   A   │ ─────────────►│  Memory │
-│  reg  │◄──────────────│  (inM)  │
-└───────┘    a-bit mux  └─────────┘
-    │   \                    │
-    │    \──────►  ALU ◄─────┘
-    │           (x=D, y=A or M)
-    │                │
-    ▼                ▼
-┌───────┐        outM / writeM
-│   D   │◄───────────┘
-│  reg  │
-└───────┘
-    │
-    ▼
-   PC ──────────────────────► pc (to ROM)
-```
-
-#### CPU Implementation
-
-```hdl
-CHIP CPU {
-    IN  inM[16], instruction[16], reset;
-    OUT outM[16], writeM, addressM[15], pc[15];
-
-    PARTS:
-    // Decode instruction type
-    // instruction[15]=0 → A-instr; instruction[15]=1 → C-instr
-    Not(in=instruction[15], out=aInstr);
-    And(a=instruction[15], b=instruction[5], out=cAndD1); // C-instr & dest A
-
-    // A register: loaded by A-instr, or by C-instr when dest includes A
-    Mux16(a=instruction, b=aluOut, sel=instruction[15], out=aIn);
-    Or(a=aInstr, b=cAndD1, out=loadA);
-    ARegister(in=aIn, load=loadA, out=aOut, out[0..14]=addressM);
-
-    // D register: loaded by C-instr when dest includes D
-    And(a=instruction[15], b=instruction[4], out=loadD);
-    DRegister(in=aluOut, load=loadD, out=dOut);
-
-    // ALU y-input: A register or Memory (controlled by a-bit = instruction[12])
-    Mux16(a=aOut, b=inM, sel=instruction[12], out=aluY);
-
-    // ALU: x=D, y=A or M, control bits from instruction[11..6]
-    ALU(x=dOut, y=aluY,
-        zx=instruction[11], nx=instruction[10],
-        zy=instruction[9],  ny=instruction[8],
-        f=instruction[7],   no=instruction[6],
-        out=aluOut, out=outM, zr=zr, ng=ng);
-
-    // writeM: C-instr and dest includes M (instruction[3])
-    And(a=instruction[15], b=instruction[3], out=writeM);
-
-    // Jump logic: evaluate condition against ALU status flags
-    And(a=instruction[2], b=ng,          out=jlt);  // j1: jump if ng
-    And(a=instruction[1], b=zr,          out=jeq);  // j2: jump if zr
-    Or(a=ng, b=zr,                       out=ngOrZr);
-    Not(in=ngOrZr,                       out=pos);
-    And(a=instruction[0], b=pos,         out=jgt);  // j3: jump if positive
-    Or(a=jlt,  b=jeq,                    out=j1);
-    Or(a=j1,   b=jgt,                    out=jumpCond);
-    And(a=instruction[15], b=jumpCond,   out=doJump); // only jump on C-instr
-
-    // PC: jump loads A into PC; otherwise increment
-    Not(in=doJump, out=incPC);
-    PC(in=aOut, load=doJump, inc=incPC, reset=reset, out[0..14]=pc);
-}
-```
+1. **Decode:** Check bit 15 to distinguish A from C instructions.
+2. **A register:** For an A-instruction, load the instruction value directly. For a C-instruction, load the ALU output only if d1 (bit 5) is set. A Mux16 selects between the two; OR of the two load conditions drives the register. A's output goes to both `addressM` and the ALU's y-input mux.
+3. **D register:** Load ALU output only when it's a C-instruction AND d2 (bit 4) is set.
+4. **ALU y-input:** Mux16 controlled by the a-bit (bit 12) selects between A and inM.
+5. **ALU:** D is x, the mux output is y. Bits 11–6 wire directly to the six ALU control inputs. ALU produces `outM`, `zr`, and `ng`.
+6. **writeM:** AND(C-instruction flag, d3).
+7. **Jump logic:** Three conditions against the flags — j1 AND ng (negative), j2 AND zr (zero), j3 AND (NOT ng AND NOT zr) (positive). OR all three, AND with the C-instruction flag so A-instructions never jump.
+8. **PC:** Jump condition met → load A. Otherwise increment. Reset overrides everything.
 
 ---
 
 ### Computer Chip
 
-`reset → (runs program)`
+**How I built it:** Three instantiations and four wires. ROM32K feeds instructions into the CPU using the CPU's pc output as the address. The CPU drives Memory with outM, writeM, and addressM. Memory feeds inM back into the CPU. Reset passes straight through to the CPU.
 
-The top-level chip. Connects ROM32K (instruction memory), CPU, and Memory (data memory) into the complete Hack computer.
-
-```hdl
-CHIP Computer {
-    IN reset;
-
-    PARTS:
-    // ROM holds the program; addressed by CPU's pc output
-    ROM32K(address=pc, out=instruction);
-
-    // CPU executes instructions and drives memory
-    CPU(inM=memOut, instruction=instruction, reset=reset,
-        outM=outM, writeM=writeM, addressM=addressM, pc=pc);
-
-    // Memory holds data, screen buffer, and keyboard state
-    Memory(in=outM, load=writeM, address=addressM, out=memOut);
-}
-```
-
-> **Key insight:** `Computer` is just three chips and four wires. All the complexity lives in the components you built in projects 1–4.
+Everything I built across projects 1–4 lives inside those three chips.
 
 ---
 
 ### Fetch-Execute Cycle
 
-Each clock tick the Hack CPU completes one full instruction cycle:
-
 | Phase | What happens |
 |-------|-------------|
-| **Fetch** | ROM32K outputs `instruction[16]` at address `pc` |
-| **Decode** | CPU reads bit 15 to identify A vs C instruction; extracts comp/dest/jump fields |
-| **Execute** | ALU computes result; A, D, M registers updated as specified by dest bits |
-| **Advance PC** | If jump condition met, PC ← A; else PC ← PC + 1 |
+| **Fetch** | ROM32K outputs the instruction at address pc |
+| **Decode** | CPU reads bit 15; extracts comp/dest/jump fields |
+| **Execute** | ALU computes; A, D, M updated per dest bits |
+| **Advance PC** | Jump taken → PC ← A; else PC ← PC + 1 |
 
 ---
 
-### Control Flow Summary
+### Control Flow
 
 | Scenario | Result |
 |----------|--------|
-| A-instruction (`bit15=0`) | Load 15-bit value into A; PC++ |
-| C-instruction, no jump | ALU computes; write to dest; PC++ |
-| C-instruction, jump taken | ALU computes; write to dest; PC ← A |
-| `reset=1` | PC ← 0 (restart program regardless of instruction) |
+| A-instruction (bit15=0) | Load value into A; PC++ |
+| C-instruction, no jump | Compute; write to dest; PC++ |
+| C-instruction, jump taken | Compute; write to dest; PC ← A |
+| reset=1 | PC ← 0 |
 
 ---
 
-### Project 5 — Full Chip List
+### Project 5 — Chips I Built
 
 | Chip | Inputs | Outputs | Description |
 |------|--------|---------|-------------|
-| Memory | in[16], load, address[15] | out[16] | RAM16K + Screen + Keyboard unified |
-| CPU | inM[16], instruction[16], reset | outM[16], writeM, addressM[15], pc[15] | Fetch/decode/execute engine |
-| Computer | reset | — | Complete Hack computer (top-level) |
+| Memory | in[16], load, address[15] | out[16] | Unified data memory |
+| CPU | inM[16], instruction[16], reset | outM[16], writeM, addressM[15], pc[15] | Fetch/decode/execute |
+| Computer | reset | — | Full Hack computer |
 
 ---
 
-### How the Projects Connect
+## Project 6 — Assembler
+
+The first project written in a high-level language rather than HDL. I built an assembler that reads `.asm` files and outputs `.hack` binary — one 16-bit instruction per line.
+
+**Input:** `Prog.asm`  
+**Output:** `Prog.hack` — loadable directly into ROM32K
+
+---
+
+### What It Handles
+
+| Input | Example | Output |
+|-------|---------|--------|
+| A-instruction (numeric) | `@42` | `0000000000101010` |
+| A-instruction (symbol) | `@LOOP`, `@counter` | Look up / allocate address, then emit |
+| C-instruction | `D=D+A;JGT` | Look up tables, emit `111...` |
+| Label | `(LOOP)` | Record ROM address; emit nothing |
+| Whitespace / comments | `// note` | Strip and ignore |
+
+---
+
+### Architecture
+
+I split the assembler into four modules:
+
+| Module | What it does |
+|--------|-------------|
+| **Parser** | Reads the file line by line; strips whitespace and comments; classifies and decomposes each instruction |
+| **Code** | Translates comp, dest, and jump mnemonics into binary strings |
+| **SymbolTable** | Hash map of symbol names to addresses; pre-loaded with predefined symbols |
+| **Main** | Runs both passes; writes the output file |
+
+---
+
+### Symbol Table
+
+Pre-loaded before the first pass:
+
+| Symbol | Address |
+|--------|---------|
+| `R0`–`R15` | 0–15 |
+| `SP` | 0 |
+| `LCL` | 1 |
+| `ARG` | 2 |
+| `THIS` | 3 |
+| `THAT` | 4 |
+| `SCREEN` | 16384 |
+| `KBD` | 24576 |
+
+Label symbols get added in Pass 1. Variable symbols get added in Pass 2 starting at RAM[16].
+
+---
+
+### Parser
+
+**Instruction types:**
+
+| Type | How to recognise | Example |
+|------|-----------------|---------|
+| `A_INSTRUCTION` | Starts with `@` | `@42`, `@counter` |
+| `C_INSTRUCTION` | Contains `=` or `;` | `D=M`, `0;JMP` |
+| `L_INSTRUCTION` | Wrapped in `( )` | `(LOOP)` |
+
+**Per-line algorithm:**
+1. Strip all whitespace; remove everything from `//` to end of line.
+2. Skip if empty.
+3. Starts with `@` → A_INSTRUCTION. Symbol = everything after `@`.
+4. Starts with `(` → L_INSTRUCTION. Symbol = content between the parentheses.
+5. Otherwise → C_INSTRUCTION. Extract dest (before `=`, or null), comp (between `=` and `;`), jump (after `;`, or null).
+
+---
+
+### Code Module
+
+**dest → 3 bits**
+
+| mnemonic | bits |
+|----------|------|
+| null | 000 |
+| M | 001 |
+| D | 010 |
+| MD | 011 |
+| A | 100 |
+| AM | 101 |
+| AD | 110 |
+| AMD | 111 |
+
+**jump → 3 bits**
+
+| mnemonic | bits |
+|----------|------|
+| null | 000 |
+| JGT | 001 |
+| JEQ | 010 |
+| JGE | 011 |
+| JLT | 100 |
+| JNE | 101 |
+| JLE | 110 |
+| JMP | 111 |
+
+**comp → 7 bits (a-bit + 6 control bits)**
+
+| comp | a | cccccc |
+|------|---|--------|
+| 0    | 0 | 101010 |
+| 1    | 0 | 111111 |
+| -1   | 0 | 111010 |
+| D    | 0 | 001100 |
+| A    | 0 | 110000 |
+| !D   | 0 | 001101 |
+| !A   | 0 | 110001 |
+| -D   | 0 | 001111 |
+| -A   | 0 | 110011 |
+| D+1  | 0 | 011111 |
+| A+1  | 0 | 110111 |
+| D-1  | 0 | 001110 |
+| A-1  | 0 | 110010 |
+| D+A  | 0 | 000010 |
+| D-A  | 0 | 010011 |
+| A-D  | 0 | 000111 |
+| D&A  | 0 | 000000 |
+| D\|A | 0 | 010101 |
+| M    | 1 | 110000 |
+| !M   | 1 | 110001 |
+| -M   | 1 | 110011 |
+| M+1  | 1 | 110111 |
+| M-1  | 1 | 110010 |
+| D+M  | 1 | 000010 |
+| D-M  | 1 | 010011 |
+| M-D  | 1 | 000111 |
+| D&M  | 1 | 000000 |
+| D\|M | 1 | 010101 |
+
+---
+
+### Two-Pass Algorithm
+
+A single pass isn't enough — a label can be referenced before it's declared (forward reference). Two passes solve this cleanly.
+
+#### Pass 1 — Build the label table (no output written)
+
+```
+ROM counter = 0
+For each line:
+    Strip whitespace and comments; skip if empty
+    L_INSTRUCTION → add symbol = ROM counter to table; do NOT increment counter
+    A or C instruction → increment ROM counter
+```
+
+After Pass 1, every label points to the correct ROM address of its following instruction.
+
+#### Pass 2 — Emit binary
+
+```
+RAM counter = 16
+For each line:
+    Strip whitespace and comments; skip if empty or L_INSTRUCTION
+
+    A_INSTRUCTION:
+        If numeric → value = integer
+        If in symbol table → value = lookup
+        Else → insert symbol at RAM counter; value = RAM counter; RAM counter++
+        Emit: '0' + 15-bit binary of value
+
+    C_INSTRUCTION:
+        Extract dest, comp, jump
+        Emit: '111' + Code(comp) + Code(dest) + Code(jump)
+```
+
+---
+
+### Data Flow
+
+```
+  Prog.asm
+     │
+     ▼
+┌─────────┐   Pass 1   ┌──────────────┐
+│  Parser │ ─────────► │ Symbol Table │
+│         │            │ (labels only)│
+└─────────┘            └──────────────┘
+     │
+     ▼
+┌─────────┐   Pass 2   ┌──────────────┐   ┌────────┐
+│  Parser │ ─────────► │ Symbol Table │──►│  Code  │──► Prog.hack
+│         │            │ + variables  │   │ module │
+└─────────┘            └──────────────┘   └────────┘
+```
+
+---
+
+### Project 6 — Key Takeaways
+
+| Concept | Detail |
+|---------|--------|
+| Two passes required | Pass 1 resolves labels; Pass 2 generates binary |
+| Forward references | Labels used before declaration — handled by Pass 1 |
+| Variable allocation | Assigned from RAM[16] upward during Pass 2 |
+| A-instruction output | `0` + 15-bit value |
+| C-instruction output | `111` + 7-bit comp + 3-bit dest + 3-bit jump |
+| L-instructions | Never emitted; only update the symbol table |
+| Pre-loaded symbols | All predefined symbols inserted before Pass 1 |
+
+---
+
+## How It All Connects
 
 ```
 Project 1  →  Gates (Not, And, Or, Mux, DMux, ...)
@@ -1213,10 +975,12 @@ Project 3  →  Memory chips  (Bit, Register, RAM*, PC)
     ↓
 Project 4  →  Assembly programs  (Mult.asm, Fill.asm)
     ↓
-Project 5  →  Computer  (Memory chip + CPU + Computer)
-                              ↑               ↑
-                     uses RAM16K,        uses ALU, Registers,
-                     Screen, Keyboard    PC from projects 2 & 3
+Project 5  →  Computer  (Memory + CPU + Computer chip)
+    ↓
+Project 6  →  Assembler  (.asm → .hack binary)
+                    translates the programs from Project 4
+                    into binary that runs on the computer
+                    I built in Project 5
 ```
 
-Every wire in the CPU and Memory traces back to NAND gates from Project 1.
+Every binary instruction that runs on this machine traces all the way back to NAND gates from Project 1.
