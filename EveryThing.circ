@@ -1533,6 +1533,12 @@
       <a name="font" val="SansSerif bold 40"/>
       <a name="text" val="Chapter 3 - Remember"/>
     </comp>
+    <comp lib="9" loc="(1735,5445)" name="Text">
+      <a name="text" val="D-Reg"/>
+    </comp>
+    <comp lib="9" loc="(1792,5310)" name="Text">
+      <a name="text" val="A-Reg"/>
+    </comp>
     <comp lib="9" loc="(180,4385)" name="Text">
       <a name="text" val="Chapter 5 - THE COMPUTER"/>
     </comp>
