@@ -1539,7 +1539,8 @@
     <comp lib="9" loc="(1792,5310)" name="Text">
       <a name="text" val="A-Reg"/>
     </comp>
-    <comp lib="9" loc="(180,4385)" name="Text">
+    <comp lib="9" loc="(1930,4517)" name="Text">
+      <a name="font" val="SansSerif bold 34"/>
       <a name="text" val="Chapter 5 - THE COMPUTER"/>
     </comp>
     <comp lib="9" loc="(195,850)" name="Text">
@@ -2773,7 +2774,6 @@
     <wire from="(2430,5160)" to="(2560,5160)"/>
     <wire from="(2430,5350)" to="(2430,5690)"/>
     <wire from="(2430,5690)" to="(2580,5690)"/>
-    <wire from="(2440,4950)" to="(2450,4950)"/>
     <wire from="(2440,5050)" to="(2440,5150)"/>
     <wire from="(2440,5150)" to="(2440,5280)"/>
     <wire from="(2440,5150)" to="(2560,5150)"/>
